@@ -1,1 +1,1 @@
-# pgm_project
+docker build -t pgm_project .
