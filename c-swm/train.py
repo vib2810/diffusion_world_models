@@ -10,7 +10,8 @@ import logging
 
 from torch.utils import data
 import torch.nn.functional as F
-
+import tensorboard
+from torch.utils.tensorboard import SummaryWriter
 import modules
 
 
@@ -157,6 +158,7 @@ if args.decoder:
 print('Starting model training...')
 step = 0
 best_loss = 1e9
+writer = SummaryWriter()
 
 for epoch in range(1, args.epochs + 1):
     model.train()
@@ -203,6 +205,7 @@ for epoch in range(1, args.epochs + 1):
         step += 1
 
     avg_loss = train_loss / len(train_loader.dataset)
+    writer.add_scalar("Loss/train", avg_loss, epoch)
     print('====> Epoch: {} Average loss: {:.6f}'.format(
         epoch, avg_loss))
 
