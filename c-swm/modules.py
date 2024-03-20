@@ -20,7 +20,7 @@ class ContrastiveSWM(nn.Module):
                  num_objects, hinge=1., sigma=0.5, encoder='large',
                  ignore_action=False, copy_action=False):
         super(ContrastiveSWM, self).__init__()
-
+        print("ContrastiveSWM init")
         self.hidden_dim = hidden_dim
         self.embedding_dim = embedding_dim
         self.action_dim = action_dim
@@ -57,12 +57,15 @@ class ContrastiveSWM(nn.Module):
                 input_dim=num_channels,
                 hidden_dim=hidden_dim // 16,
                 num_objects=num_objects)
+        print("ContrastiveSWM init 2")
 
         self.obj_encoder = EncoderMLP(
             input_dim=np.prod(width_height),
             hidden_dim=hidden_dim,
             output_dim=embedding_dim,
             num_objects=num_objects)
+
+        print("ContrastiveSWM init 3")
 
         self.transition_model = TransitionGNN(
             input_dim=embedding_dim,
@@ -74,6 +77,7 @@ class ContrastiveSWM(nn.Module):
 
         self.width = width_height[0]
         self.height = width_height[1]
+        print("ContrastiveSWM init done")
 
     def energy(self, state, action, next_state, no_trans=False):
         """Energy function based on normalized squared L2 norm."""

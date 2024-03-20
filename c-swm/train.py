@@ -64,6 +64,8 @@ parser.add_argument('--save-folder', type=str,
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
+print("Started Script with CUDA: ", args.cuda)
+
 now = datetime.datetime.now()
 timestamp = now.isoformat()
 
@@ -95,15 +97,18 @@ pickle.dump({'args': args}, open(meta_file, "wb"))
 
 device = torch.device('cuda' if args.cuda else 'cpu')
 
+print("Loading data...")
 dataset = utils.StateTransitionsDataset(
     hdf5_file=args.dataset)
 train_loader = data.DataLoader(
     dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
+print('Data loaded!')
 
 # Get data sample
 obs = train_loader.__iter__().next()[0]
 input_shape = obs[0].size()
 
+print("Creating model...")
 model = modules.ContrastiveSWM(
     embedding_dim=args.embedding_dim,
     hidden_dim=args.hidden_dim,
@@ -115,6 +120,7 @@ model = modules.ContrastiveSWM(
     ignore_action=args.ignore_action,
     copy_action=args.copy_action,
     encoder=args.encoder).to(device)
+print("Model created")
 
 model.apply(utils.weights_init)
 
