@@ -24,6 +24,7 @@ RUN pip install gym==0.12.0 atari-py==0.1.4 scikit-image==0.15.0 matplotlib==3.0
 
 # install h5py
 RUN pip install h5py
+RUN pip install wandb
 
 # install tk
 RUN apt-get update && apt-get install -y tk

@@ -4,14 +4,14 @@ import utils
 import datetime
 import os
 import pickle
-
+import wandb
 import numpy as np
 import logging
 
 from torch.utils import data
 import torch.nn.functional as F
-import tensorboard
-from torch.utils.tensorboard import SummaryWriter
+
+# from torch.utils.tensorboard import SummaryWriter
 import modules
 
 
@@ -62,9 +62,19 @@ parser.add_argument('--save-folder', type=str,
                     default='checkpoints',
                     help='Path to checkpoints.')
 
+
+# start a new wandb run to track this script
+
+
+
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
+wandb.init(
+    # set the wandb project where this run will be logged
+    project="pgm",
+    config = vars(args)
+)
 print("Started Script with CUDA: ", args.cuda)
 
 now = datetime.datetime.now()
@@ -158,7 +168,7 @@ if args.decoder:
 print('Starting model training...')
 step = 0
 best_loss = 1e9
-writer = SummaryWriter()
+# writer = SummaryWriter()
 
 for epoch in range(1, args.epochs + 1):
     model.train()
@@ -205,7 +215,8 @@ for epoch in range(1, args.epochs + 1):
         step += 1
 
     avg_loss = train_loss / len(train_loader.dataset)
-    writer.add_scalar("Loss/train", avg_loss, epoch)
+    # writer.add_scalar("Loss/train", avg_loss, epoch)
+    wandb.log({"avg_loss": loss})
     print('====> Epoch: {} Average loss: {:.6f}'.format(
         epoch, avg_loss))
 

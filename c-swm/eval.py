@@ -151,7 +151,14 @@ with torch.no_grad():
     pred_states = []
     next_states = []
 
-for k in topk:
-    print('Hits @ {}: {}'.format(k, hits_at[k] / float(num_samples)))
+with open(os.path.join(args_eval.save_folder, 'evals.txt'.format(k)), 'w') as f:
+        
+    for k in topk:
+        print('Hits @ {}: {}'.format(k, hits_at[k] / float(num_samples)))
+        f.write('{}'.format(hits_at[k] / float(num_samples)))
+        f.write('\n')
+    
 
-print('MRR: {}'.format(rr_sum / float(num_samples)))
+    print('MRR: {}'.format(rr_sum / float(num_samples)))
+    f.write('{}'.format(rr_sum / float(num_samples)))
+    f.write('\n')

@@ -1,3 +1,6 @@
+import sys
+sys.path.append('/home/mj_ws/c-swm/')
+
 from envs import physics_sim
 import numpy as np
 import argparse

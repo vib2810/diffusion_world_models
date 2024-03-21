@@ -220,4 +220,4 @@ def generate_3_body_problem_dataset(dest,
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)
     fig.tight_layout()
-    fig.savefig(dest.split(".")[0] + "_samples.jpg")
+    fig.savefig(dest.split(".")[0] + "_samples.png")
