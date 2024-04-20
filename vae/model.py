@@ -47,9 +47,14 @@ class Decoder(nn.Module):
         return x
 
 class VAE(pl.LightningModule):
-    def __init__(self, n_stack = 3, n_channel=3, latent_dim=100,):
+    def __init__(self,  config):
         super(VAE, self).__init__()
-        self.save_hyperparameters()
+        self.config = config
+        n_channel = config['n_channel']
+        n_stack = config['history_length']
+        latent_dim = config['latent_dim']
+    
+        self.save_hyperparameters(config)
         self.encoder = Encoder(n_channel * n_stack, latent_dim)
         self.decoder = Decoder(latent_dim, n_channel)
 
@@ -59,6 +64,7 @@ class VAE(pl.LightningModule):
         return z, mu, logvar
 
     def forward(self, x):
+        
         mu, logvar = self.encoder(x)
         z = self.reparameterize(mu, logvar)
         recon_x = self.decoder(z)
@@ -70,16 +76,38 @@ class VAE(pl.LightningModule):
         return mu + eps * std
 
     def training_step(self, batch, batch_idx):
-        x, _ = batch
-        x_recon, mu, logvar = self(x)
-        recon_loss = F.mse_loss(x_recon, x, reduction='sum')
+        obs, action, next_obs = batch
+        x_recon, mu, logvar = self(obs)
+        # print(x_recon.shape, obs[:, -4:-1].shape) # reconstruct last observation
+        recon_loss = F.mse_loss(x_recon, obs[:, -4:-1], reduction='sum')
         kl_divergence = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
         loss = recon_loss + kl_divergence
-        self.log('train_loss', loss)
+        self.log_dict(
+            {
+                "train/loss": loss,
+                "train/kl_divergence": kl_divergence,
+                "train/recon_loss": recon_loss,
+            }, prog_bar=True, on_epoch=True
+        )
+        return loss
+    
+    def validation_step(self, batch, batch_idx):
+        obs, action, next_obs = batch
+        x_recon, mu, logvar = self(obs)
+        recon_loss = F.mse_loss(x_recon, obs[:, -4:-1], reduction='sum')
+        kl_divergence = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+        loss = recon_loss + kl_divergence
+        self.log_dict(
+            {
+                "val/loss": loss,
+                "val/recon_loss": recon_loss,
+                "val/kl_divergence": kl_divergence
+            }, prog_bar=True, on_epoch=True
+        )
         return loss
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
+        return torch.optim.Adam(self.parameters(), lr=self.config['lr'])
 
 
 if __name__ == '__main__':

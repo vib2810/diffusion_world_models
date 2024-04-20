@@ -4,6 +4,7 @@ import h5py
 import numpy as np
 from model import VAE
 import pytorch_lightning as pl
+import torch
 def load_list_dict_h5py(fname):
     """Restore list of dictionaries containing numpy arrays from h5py file."""
     array_dict = list()
@@ -48,20 +49,40 @@ class StateTransitionsDataset(data.Dataset):
         return obs, action, next_obs
 
 
-def train():
-    dataset_root = ''
-    environment = ''
-    history_length = 3
+def train(args):
+    
+    config = {
+        'lr': 1e-3,
+        'n_epochs': 10,
+        'batch_size': 32,
+        'n_channel': 3,
+        'latent_dim': 128,
+    }
+    config.update(vars(args)) # add argparse arguments
+    root = f'{config["dataset_root"]}/{config["environment"]}'
+    train_set = StateTransitionsDataset(f'{root}_train_hist_{config["history_length"]}.h5')
+    val_set = StateTransitionsDataset(f'{root}_eval_hist_{config["history_length"]}.h5')
+    model = VAE(
+        config = config
+    )
 
-    train_set = StateTransitionsDataset(f'{dataset_root}/{environment}_train_hist_{history_length}.h5')
-    val_set = StateTransitionsDataset(f'{dataset_root}/{environment}_eval_hist_{history_length}.h5')
-    model = VAE(n_stack=3)
-
-    train_loader = data.DataLoader(train_set, batch_size=32, shuffle=True)
-    val_loader = data.DataLoader(val_set, batch_size=32, shuffle=False)
-
-    trainer = pl.Trainer(max_epochs=10)
+    train_loader = data.DataLoader(train_set, batch_size=config['batch_size'], shuffle=True)
+    val_loader = data.DataLoader(val_set, batch_size=config['batch_size'], shuffle=False)
+    trainer = pl.Trainer(
+        max_epochs=config['n_epochs'], 
+        log_every_n_steps=1,
+        check_val_every_n_epoch=1,
+    )
     trainer.fit(model, train_loader, val_loader)
 
 if __name__ == '__main__':
-    train()
+    import argparse
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--history_length', type=int, default=3)
+    parser.add_argument('--environment', type=str, required=True)
+    parser.add_argument('--dataset_root', type=str, default='/home/punygod_admin/pgm/pgm_project/c-swm/data')
+    args = parser.parse_args()
+
+
+    train(args)
