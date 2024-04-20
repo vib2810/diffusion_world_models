@@ -34,7 +34,7 @@ def fig2rgb_array(fig):
     return np.fromstring(buffer, dtype=np.uint8).reshape(height, width, 3)
 
 
-def render_cubes(positions, width):
+def render_cubes(positions, width, render_size):
     voxels = np.zeros((width, width, width), dtype=np.bool)
     colors = np.empty(voxels.shape, dtype=object)
 
@@ -58,17 +58,19 @@ def render_cubes(positions, width):
     im = fig2rgb_array(fig)
     plt.close(fig)
     im = np.array(  # Crop and resize
-        Image.fromarray(im[215:455, 80:570]).resize((50, 50), Image.ANTIALIAS))
+        Image.fromarray(im[215:455, 80:570]).resize(render_size, Image.ANTIALIAS))
+    # print("RENDER SIZE: ", render_size)
     return im / 255.
 
 
 class BlockPushing(gym.Env):
     """Gym environment for block pushing task."""
 
-    def __init__(self, width=5, height=5, render_type='cubes', num_objects=5,
+    def __init__(self, width=5, height=5, render_type='cubes', num_objects=5, render_size = (64, 64),
                  seed=None):
         self.width = width
         self.height = height
+        self.render_size = render_size
         self.render_type = render_type
 
         self.num_objects = num_objects
@@ -106,6 +108,13 @@ class BlockPushing(gym.Env):
             im = np.zeros((3, self.width, self.height))
             for idx, pos in enumerate(self.objects):
                 im[:, pos[0], pos[1]] = self.colors[idx][:3]
+            im = Image.fromarray(im, 'RGB') 
+            im = im.resize(self.render_size, Image.ANTIALIAS)
+            im = np.array(im)
+            im = im / 255.
+            # resize
+            
+
             return im
         elif self.render_type == 'circles':
             im = np.zeros((self.width*10, self.height*10, 3), dtype=np.float32)
@@ -113,6 +122,10 @@ class BlockPushing(gym.Env):
                 rr, cc = skimage.draw.circle(
                     pos[0]*10 + 5, pos[1]*10 + 5, 5, im.shape)
                 im[rr, cc, :] = self.colors[idx][:3]
+            im = Image.fromarray(im, 'RGB') 
+            im = im.resize(self.render_size, Image.ANTIALIAS)
+            im = np.array(im)
+            im = im / 255.
             return im.transpose([2, 0, 1])
         elif self.render_type == 'shapes':
             im = np.zeros((self.width*10, self.height*10, 3), dtype=np.float32)
@@ -129,9 +142,13 @@ class BlockPushing(gym.Env):
                     rr, cc = square(
                         pos[0]*10, pos[1]*10, 10, im.shape)
                     im[rr, cc, :] = self.colors[idx][:3]
+            im = Image.fromarray(im, 'RGB')            
+            im = im.resize(self.render_size, Image.ANTIALIAS)
+            im = np.array(im)
+            im = im / 255.
             return im.transpose([2, 0, 1])
         elif self.render_type == 'cubes':
-            im = render_cubes(self.objects, self.width)
+            im = render_cubes(self.objects, self.width, self.render_size)
             return im.transpose([2, 0, 1])
 
     def get_state(self):
