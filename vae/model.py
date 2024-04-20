@@ -7,11 +7,11 @@ class Encoder(nn.Module):
     def __init__(self, n_channel, latent_dim):
         super(Encoder, self).__init__()
         self.conv = nn.Sequential(
-            nn.Conv2d(n_channel, 32, kernel_size=4, stride=2, padding=1),
+            nn.Conv2d(n_channel, 32, kernel_size=3, stride=2, padding=1),
             nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
             nn.ReLU(),
-            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
             nn.ReLU()
         )
         self.fc_mu = nn.Linear(128 * 8 * 8, latent_dim)
@@ -32,11 +32,11 @@ class Decoder(nn.Module):
             nn.ReLU()
         )
         self.conv = nn.Sequential(
-            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
+            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU(),
-            nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),
+            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU(),
-            nn.ConvTranspose2d(32, n_channel, kernel_size=4, stride=2, padding=1),
+            nn.ConvTranspose2d(32, n_channel, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.Sigmoid()
         )
 
