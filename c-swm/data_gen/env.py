@@ -140,10 +140,10 @@ if __name__ == '__main__':
 
         if i % 10 == 0:
             print("iter "+str(i))
-
+    print("writing file")
     env.close()
     fname = args.fname[:-3]
     fname += '_hist_' + str(history_length) + '.h5'
     # Save replay buffer to disk.
-    utils.save_list_dict_h5py(replay_buffer, args.fname)
+    utils.save_list_dict_h5py(replay_buffer, fname)
 
