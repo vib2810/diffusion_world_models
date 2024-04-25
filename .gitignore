@@ -1,2 +1,5 @@
 *.h5
 **checkpoints
+train_logs/
+*.pyc
+lightning_logs/

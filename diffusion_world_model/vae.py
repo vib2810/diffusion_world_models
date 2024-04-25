@@ -74,6 +74,10 @@ class VAE(pl.LightningModule):
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
         return mu + eps * std
+    
+    def get_encoding(self, x):
+        mu, logvar = self.encoder(x)
+        return mu
 
     def training_step(self, batch, batch_idx):
         obs, action, next_obs = batch
@@ -111,10 +115,18 @@ class VAE(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    n_stack = 3
-    model = VAE(n_stack=n_stack)
+    config = {
+        'lr': 1e-3,
+        'n_epochs': 10,
+        'batch_size': 32,
+        'n_channel': 3,
+        'latent_dim': 128,
+        'history_length': 3
+    }
+    model = VAE(config)
 
-    x = torch.randn(1, 3*n_stack, 64, 64)
+    x = torch.randn(1, 3*config['history_length'], 64, 64)
     recon_x, mu, logvar = model(x)
     print("Input shape:", x.shape)
+    print("Mu shape:", mu.shape)
     print("Reconstructed shape:", recon_x.shape)
