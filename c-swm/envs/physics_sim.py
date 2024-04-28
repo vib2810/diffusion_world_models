@@ -201,7 +201,8 @@ def generate_3_body_problem_dataset(dest,
             print(i)
         sequences.append(generate_sequence())
     sequences = np.array(sequences, dtype=np.uint8)
-
+    import os
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
     np.savez_compressed(dest,
                         train_x=sequences[:train_set_size],
                         valid_x=sequences[

@@ -1,5 +1,6 @@
 import sys
 sys.path.append('/home/mj_ws/c-swm/')
+sys.path.append('/home/praveen/dev/pgm/project/pgm_project/c-swm/')
 
 from envs import physics_sim
 import numpy as np
@@ -18,6 +19,10 @@ parser.add_argument('--seed', type=int, default=0,
                     help='Random seed.')
 parser.add_argument('--eval', action='store_true', default=False,
                     help='Create evaluation set.')
+parser.add_argument('--history_length', default=6,
+                    help='Create evaluation set.')
+parser.add_argument('--total_sequence_length', default=12,
+                    help='Create evaluation set.')
 
 args = parser.parse_args()
 
@@ -28,8 +33,8 @@ physics_sim.generate_3_body_problem_dataset(
     train_set_size=args.num_episodes,
     valid_set_size=2,
     test_set_size=2,
-    seq_len=12,
-    img_size=[50, 50],
+    seq_len=args.total_sequence_length,
+    img_size=[64, 64],
     dt=2.0,
     vx0_max=0.5,
     vy0_max=0.5,
@@ -37,21 +42,22 @@ physics_sim.generate_3_body_problem_dataset(
     seed=args.seed
 )
 
+
+
 # data shape: (num_samples, num_steps, x_shape, y_shape, num_channels)
 
 data = np.load(args.fname + '.npz')
 
-train_x = np.concatenate(
-    (data['train_x'][:, :-1], data['train_x'][:, 1:]), axis=-1)
-train_x = np.transpose(train_x, (0, 1, 4, 2, 3)) / 255.
+# train_x = np.concatenate(
+#     (data['train_x'][:, :-1], data['train_x'][:, 1:]), axis=-1)
+train_x = np.transpose(data['train_x'], (0, 1, 4, 2, 3)) / 255.
 
 replay_buffer = []
-
-for idx in range(data['train_x'].shape[0]):
+for idx in range(train_x.shape[0]):
     sample = {
-        'obs': train_x[idx, :-1],
-        'next_obs': train_x[idx, 1:],
-        'action': np.zeros((train_x.shape[1] - 1), dtype=np.int64)
+        'obs': train_x[idx, :-args.history_length],
+        'next_obs': train_x[idx, args.history_length:],
+        'action': np.zeros((train_x.shape[1] - 1), dtype=np.int64),
     }
 
     replay_buffer.append(sample)
