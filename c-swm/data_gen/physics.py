@@ -6,6 +6,7 @@ from envs import physics_sim
 import numpy as np
 import argparse
 
+
 from utils import save_list_dict_h5py
 
 
@@ -19,9 +20,9 @@ parser.add_argument('--seed', type=int, default=0,
                     help='Random seed.')
 parser.add_argument('--eval', action='store_true', default=False,
                     help='Create evaluation set.')
-parser.add_argument('--history_length', default=6,
+parser.add_argument('--history_length', type = int,default=6,
                     help='Create evaluation set.')
-parser.add_argument('--total_sequence_length', default=12,
+parser.add_argument('--total_sequence_length', type = int, default=12,
                     help='Create evaluation set.')
 
 args = parser.parse_args()

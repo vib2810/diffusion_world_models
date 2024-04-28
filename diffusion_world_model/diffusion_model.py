@@ -197,7 +197,7 @@ class DiffusionTrainer(nn.Module):
     def run_after_epoch(self):
         self.ema.copy_to(self.inference_nets.parameters())
     
-    def eval_model(self, obs, action, next_obs, sampler="ddim"):
+    def eval_model(self, obs, action, next_obs, sampler="ddim", save = False):
         """
         Compute 2 losses:
         1. Latent space loss: MSE between predicted and actual latent space observation
@@ -219,13 +219,22 @@ class DiffusionTrainer(nn.Module):
             next_obs_only = next_obs[:, self.config["n_channel"]*(self.config["history_length"]-1):] # last observation
             
             # imshow decoded_model_pred, next_obs_only in the same plot
-            import matplotlib.pyplot as plt
-            plt.figure()
-            plt.subplot(1, 2, 1)
-            plt.imshow(decoded_model_pred[0].permute(1, 2, 0).cpu().numpy())
-            plt.subplot(1, 2, 2)
-            plt.imshow(next_obs_only[0].permute(1, 2, 0).cpu().numpy())
-            plt.savefig("recon.png")
+            # import matplotlib.pyplot as plt
+            # plt.figure()
+            # plt.subplot(1, 2, 1)
+
+            
+            # im1 = decoded_model_pred[0].permute(1, 2, 0).cpu().numpy()
+            # im2 = next_obs_only[0].permute(1, 2, 0).cpu().numpy()
+            if save:
+                grid1 = torchvision.utils.make_grid(decoded_model_pred, normalize=True)
+                grid2 = torchvision.utils.make_grid(next_obs_only, normalize=True)
+                stacked = torch.cat([grid1, grid2], dim=2)
+                torchvision.utils.save_image(stacked, "recon.png")
+            # plt.imshow(decoded_model_pred[0].permute(1, 2, 0).cpu().numpy())
+            # plt.subplot(1, 2, 2)
+            # plt.imshow(next_obs_only[0].permute(1, 2, 0).cpu().numpy())
+            # plt.savefig("recon.png")
             
             recon_loss = F.mse_loss(decoded_model_pred, next_obs_only)
             

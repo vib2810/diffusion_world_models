@@ -4,7 +4,9 @@ register(
     'ShapesTrain-v0',
     entry_point='envs.block_pushing:BlockPushing',
     max_episode_steps=100,
-    kwargs={'render_type': 'shapes'},
+    kwargs={
+        'render_type': 'shapes', 
+    },
 )
 
 register(

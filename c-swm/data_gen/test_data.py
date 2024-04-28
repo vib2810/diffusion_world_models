@@ -3,11 +3,9 @@ import matplotlib.pyplot as plt
 import h5py
 root = 'data/'
 
-file = 'balls_train.h5'
+file = 'shapes_train_hist_1.h5'
 
 with h5py.File(root + file, 'r') as hf:
-    
-
     # Initialize an empty list to store dictionaries
     list_of_dicts = []
 
@@ -21,6 +19,7 @@ with h5py.File(root + file, 'r') as hf:
         list_of_dicts.append(dic)
 import os
 os.makedirs('temp', exist_ok=True)
+print("length of list_of_dicts:", len(list_of_dicts))
 # Now list_of_dicts contains the list of dictionaries
 for i, dict in enumerate(list_of_dicts):
     print(dict.keys())
@@ -29,25 +28,13 @@ for i, dict in enumerate(list_of_dicts):
     print(dict['action'].shape)
     # images = []
     images = dict['obs'].transpose(0, 2, 3, 1)
+    images *= 255
+    images = images.astype(np.uint8)
+    for j in range(images.shape[0]):
+        if len(np.unique(images[j], axis = 0)) == 5:
+            # print(len(np.unique(images[j], axis = 0)))
+            # print(np.unique(images[j], axis = 0))
+            plt.imsave(f'temp/{i}_{j}.png', images[j])
     img = np.hstack(images)
     plt.imsave(f'temp/{i}.png', img)
 
-# data = np.load(root + file)
-# print(data['train_x'].shape)
-# print(data['valid_x'].shape)
-# print(data['test_x'].shape)
-
-# train_x = data['train_x']
-
-
-# for i in range(len(train_x)):
-#     print(train_x[i].shape)
-#     img = train_x[i][0]
-#     plt.imsave('temp.png', img)
-
-
-# np.savez_compressed(dest,
-#                         train_x=sequences[:train_set_size],
-#                         valid_x=sequences[
-#                                 train_set_size:train_set_size + valid_set_size],
-#                         test_x=sequences[train_set_size + valid_set_size:])

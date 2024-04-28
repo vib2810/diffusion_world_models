@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
-
+import torchvision
 class Encoder(nn.Module):
     def __init__(self, n_channel, latent_dim):
         super(Encoder, self).__init__()
@@ -37,7 +37,8 @@ class Decoder(nn.Module):
             nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU(),
             nn.ConvTranspose2d(32, n_channel, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.Sigmoid()
+            # nn.Sigmoid()
+            nn.Tanh()
         )
 
     def forward(self, z):
@@ -82,8 +83,7 @@ class VAE(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         obs, action, next_obs = batch
         x_recon, mu, logvar = self(obs)
-        # print(x_recon.shape, obs[:, -4:-1].shape) # reconstruct last observation
-        recon_loss = F.mse_loss(x_recon, obs[:, -4:-1], reduction='sum')
+        recon_loss = F.mse_loss(x_recon, obs, reduction='sum')
         kl_divergence = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
         loss = recon_loss + kl_divergence
         self.log_dict(
@@ -98,7 +98,7 @@ class VAE(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         obs, action, next_obs = batch
         x_recon, mu, logvar = self(obs)
-        recon_loss = F.mse_loss(x_recon, obs[:, -4:-1], reduction='sum')
+        recon_loss = F.mse_loss(x_recon, obs, reduction='sum')
         kl_divergence = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
         loss = recon_loss + kl_divergence
         self.log_dict(
@@ -108,6 +108,14 @@ class VAE(pl.LightningModule):
                 "val/kl_divergence": kl_divergence
             }, prog_bar=True, on_epoch=True
         )
+        if batch_idx == 0:
+        #     self.log_images(obs, x_recon)
+            
+            grid = torchvision.utils.make_grid(obs) 
+            self.logger.experiment.add_image('original_images', grid, 0) 
+            grid = torchvision.utils.make_grid(x_recon) 
+            self.logger.experiment.add_image('generated_images', grid, 0) 
+
         return loss
 
     def configure_optimizers(self):

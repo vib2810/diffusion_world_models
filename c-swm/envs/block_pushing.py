@@ -3,6 +3,7 @@
 import numpy as np
 
 import utils
+import cv2
 import gym
 from gym import spaces
 from gym.utils import seeding
@@ -66,7 +67,7 @@ def render_cubes(positions, width, render_size):
 class BlockPushing(gym.Env):
     """Gym environment for block pushing task."""
 
-    def __init__(self, width=5, height=5, render_type='cubes', num_objects=5, render_size = (64, 64),
+    def __init__(self, width=5, height=5, render_type='shapes', num_objects=5, render_size = (64, 64),
                  seed=None):
         self.width = width
         self.height = height
@@ -128,22 +129,38 @@ class BlockPushing(gym.Env):
             im = im / 255.
             return im.transpose([2, 0, 1])
         elif self.render_type == 'shapes':
-            im = np.zeros((self.width*10, self.height*10, 3), dtype=np.float32)
-            for idx, pos in enumerate(self.objects):
-                if idx % 3 == 0:
-                    rr, cc = skimage.draw.circle(
-                        pos[0]*10 + 5, pos[1]*10 + 5, 5, im.shape)
-                    im[rr, cc, :] = self.colors[idx][:3]
-                elif idx % 3 == 1:
-                    rr, cc = triangle(
-                        pos[0]*10, pos[1]*10, 10, im.shape)
-                    im[rr, cc, :] = self.colors[idx][:3]
-                else:
-                    rr, cc = square(
-                        pos[0]*10, pos[1]*10, 10, im.shape)
-                    im[rr, cc, :] = self.colors[idx][:3]
+            im = np.zeros((self.width*10, self.height*10, 3), dtype=np.uint8)
+            # print(self.objects)
+            for idx, opos in enumerate(self.objects):
+                pos = [opos[1], opos[0]]
+                im[pos[0]*10:pos[0]*10+10, pos[1]*10:pos[1]*10+10] = np.array(self.colors[idx][:3])*255
+                # cv2.circle(im, (pos[0]*10 + 5, pos[1]*10 + 5), 5, np.array(self.colors[idx][:3])*255, -1)
+                # if idx % 3 == 0:
+                    
+                #     # rr, cc = skimage.draw.circle(
+                #     #     pos[0]*10 + 5, pos[1]*10 + 5, 5, im.shape)
+                #     # im[rr, cc, :] = self.colors[idx][:3]
+                # elif idx % 3 == 1:
+                #     # rr, cc = triangle(
+                #     #     pos[0]*10, pos[1]*10, 10, im.shape)
+                #     # im[rr, cc, :] = self.colors[idx][:3]
+                #     # cv2 draw triange
+                #     pts = np.array([
+                #         [pos[0]*10, pos[1]*10], 
+                #         [pos[0]*10 + 10, pos[1]*10], 
+                #         [pos[0]*10 + 5, pos[1]*10 + 10]
+                #     ], np.int32)
+                #     pts = pts.reshape((-1, 1, 2))
+                #     cv2.polylines(im, [pts], isClosed=True, color=np.array(self.colors[idx][:3]) *255, thickness=1)
+                #     cv2.fillPoly(im, [pts], color=np.array(self.colors[idx][:3]) *255)
+                # else:
+                #     # rr, cc = square(
+                #     #     pos[0]*10, pos[1]*10, 10, im.shape)
+                #     # im[rr, cc, :] = self.colors[idx][:3]
+                #     # print(pos, self.colors[idx][:3])
+                #     im[pos[0]*10:pos[0]*10+10, pos[1]*10:pos[1]*10+10] = np.array([128, 200, 0])
             im = Image.fromarray(im, 'RGB')            
-            im = im.resize(self.render_size, Image.ANTIALIAS)
+            im = im.resize(self.render_size)
             im = np.array(im)
             im = im / 255.
             return im.transpose([2, 0, 1])
@@ -209,7 +226,7 @@ class BlockPushing(gym.Env):
         if self.valid_move(obj_id, offset):
             self.objects[obj_id][0] += offset[0]
             self.objects[obj_id][1] += offset[1]
-
+        
     def step(self, action):
 
         done = False

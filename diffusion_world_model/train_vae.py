@@ -37,7 +37,7 @@ if __name__ == '__main__':
     import argparse
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--history_length', type=int, default=3)
+    parser.add_argument('--history_length', type=int, default=1)
     parser.add_argument('--environment', type=str, required=True)
     parser.add_argument('--dataset_root', type=str, default='/home/punygod_admin/pgm/pgm_project/c-swm/data')
     args = parser.parse_args()

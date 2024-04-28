@@ -64,10 +64,10 @@ class ModelTrainer:
                 # Extract data
                 obs, action, next_obs = nbatch
                 # save next_obs as an image
-                import matplotlib.pyplot as plt
-                plt.figure()
-                plt.imshow(next_obs[0].permute(1, 2, 0))
-                plt.savefig("next_obs.png")
+                # import matplotlib.pyplot as plt
+                # plt.figure()
+                # plt.imshow(next_obs[0].permute(1, 2, 0))
+                # plt.savefig("next_obs.png")
                 
                 # create next_obs_stacked
                 next_obs_stacked = torch.cat([obs[:, self.config["n_channel"]:], next_obs], dim=1) # make stacked next_obs
@@ -106,7 +106,7 @@ class ModelTrainer:
         """
         # Evaluate the model by computing the MSE on test data
         total_loss = {"latent_loss": 0, "recon_loss": 0}
-        for nbatch in self.eval_dataloader:
+        for idx, nbatch in enumerate(self.eval_dataloader):
             obs, action, next_obs = nbatch
             next_obs_stacked = torch.cat([obs[:, self.config["n_channel"]:], next_obs], dim=1) # make stacked next_obs
             next_obs_stacked = next_obs_stacked.detach()
@@ -116,8 +116,8 @@ class ModelTrainer:
             next_obs_stacked = next_obs_stacked.float().to(self.device)
             
             B = obs.shape[0]
-
-            losses = self.model.eval_model(obs, action, next_obs_stacked)
+            save = True if idx == 1 else False
+            losses = self.model.eval_model(obs, action, next_obs_stacked, save = save)
             # multiply by batch size
             for k, v in losses.items():
                 total_loss[k] += v*B

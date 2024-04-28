@@ -58,6 +58,7 @@ if __name__ == '__main__':
                         help='Run atari mode (stack multiple frames).')
     parser.add_argument('--seed', type=int, default=1,
                         help='Random seed.')
+    parser.add_argument('--history_length', type=int, default=3)
     
     args = parser.parse_args()
 
@@ -92,7 +93,7 @@ if __name__ == '__main__':
     replay_buffer = []
 
     img_size = (64, 64)
-    history_length = 3
+    history_length = args.history_length
 
     for i in range(episode_count):
 
@@ -115,28 +116,32 @@ if __name__ == '__main__':
 
         obs_history = deque(maxlen=history_length)
         while True:
-            obs_history.append(ob[1])
-            if len(obs_history) < history_length:
-                continue
-            obs_concat = np.concatenate(obs_history, axis=0)
-            replay_buffer[i]['obs'].append(obs_concat)
-
+            # if args.atari:
+            #     ob = crop_normalize(ob, crop, img_size)
+            # obs_history.append(ob[1])
+            # if len(obs_history) < history_length:
+            #     continue
+            # obs_concat = np.stack(obs_history, axis=0)
+            replay_buffer[i]['obs'].append(ob[1].copy())
             action = agent.act(ob, reward, done)
             ob, reward, done, _ = env.step(action)
             if args.atari:
-                ob = crop_normalize(ob, crop)
+                ob = crop_normalize(ob, crop, img_size)
 
 
             replay_buffer[i]['action'].append(action)
-            replay_buffer[i]['next_obs'].append(ob[1])
+            replay_buffer[i]['next_obs'].append(ob[1].copy())
 
             if done:
                 break
+        # print(len(replay_buffer[i]['obs']))
+        # replay_buffer[i]['obs'] = np.stack(replay_buffer[i]['obs'])
+        # replay_buffer[i]['action'] = np.array(replay_buffer[i]['action'])
+        # replay_buffer[i]['next_obs'] = np.stack(replay_buffer[i]['next_obs'])
 
-        # print("replay_buffer[i]['obs'][-1].shape: ", replay_buffer[i]['obs'][-1].shape)
-        # print("replay_buffer[i]['action'][-1]: ", replay_buffer[i]['action'][-1])
-        # print("replay_buffer[i]['next_obs'][-1].shape: ", replay_buffer[i]['next_obs'][-1].shape)
-    
+        # print(replay_buffer[i]['obs'].shape)
+        # print(replay_buffer[i]['action'].shape)
+        # print(replay_buffer[i]['next_obs'].shape)
 
         if i % 10 == 0:
             print("iter "+str(i))
