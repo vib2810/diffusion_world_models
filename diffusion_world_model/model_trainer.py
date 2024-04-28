@@ -63,8 +63,15 @@ class ModelTrainer:
             for nbatch in self.train_dataloader:
                 # Extract data
                 obs, action, next_obs = nbatch
+                # save next_obs as an image
+                import matplotlib.pyplot as plt
+                plt.figure()
+                plt.imshow(next_obs[0].permute(1, 2, 0))
+                plt.savefig("next_obs.png")
+                
                 # create next_obs_stacked
                 next_obs_stacked = torch.cat([obs[:, self.config["n_channel"]:], next_obs], dim=1) # make stacked next_obs
+                next_obs_stacked = next_obs_stacked.detach()
                 
                 obs = obs.float().to(self.device)
                 action = action.to(self.device)
@@ -102,6 +109,7 @@ class ModelTrainer:
         for nbatch in self.eval_dataloader:
             obs, action, next_obs = nbatch
             next_obs_stacked = torch.cat([obs[:, self.config["n_channel"]:], next_obs], dim=1) # make stacked next_obs
+            next_obs_stacked = next_obs_stacked.detach()
             
             obs = obs.float().to(self.device)
             action = action.to(self.device)

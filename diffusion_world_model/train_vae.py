@@ -2,7 +2,7 @@
 import torch.utils.data as data
 import h5py
 import numpy as np
-from diffusion_world_model.vae import VAE
+from vae import VAE
 import pytorch_lightning as pl
 import torch
 from dataset import StateTransitionsDataset
@@ -11,7 +11,7 @@ def train(args):
     
     config = {
         'lr': 1e-3,
-        'n_epochs': 10,
+        'n_epochs': 200,
         'batch_size': 32,
         'n_channel': 3,
         'latent_dim': 128,
@@ -37,7 +37,7 @@ if __name__ == '__main__':
     import argparse
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--history_length', type=int, default=1)
+    parser.add_argument('--history_length', type=int, default=3)
     parser.add_argument('--environment', type=str, required=True)
     parser.add_argument('--dataset_root', type=str, default='/home/punygod_admin/pgm/pgm_project/c-swm/data')
     args = parser.parse_args()

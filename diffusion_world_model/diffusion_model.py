@@ -11,6 +11,7 @@ from diffusers.schedulers.scheduling_ddim import DDIMScheduler
 from diffusers.training_utils import EMAModel
 from diffusers.optimization import get_scheduler
 from vae import VAE
+import cv2
 
 class DiffusionTrainer(nn.Module):
 
@@ -32,11 +33,11 @@ class DiffusionTrainer(nn.Module):
         # create network objects
         self.noise_pred_net = ConditionalUnet1D(
             input_dim=config["latent_dim"],
-            global_cond_dim=config["world_action_shape"], 
+            global_cond_dim=config["world_action_shape"]+config["latent_dim"]
         )
         self.noise_pred_net_eval = ConditionalUnet1D(
             input_dim=config["latent_dim"],
-            global_cond_dim=config["world_action_shape"],
+            global_cond_dim=config["world_action_shape"]+config["latent_dim"]
         )
         self.nets = nn.ModuleDict({
             'noise_pred_net': self.noise_pred_net
@@ -95,7 +96,8 @@ class DiffusionTrainer(nn.Module):
             
     def get_conditioning(self, obs: torch.Tensor, action: torch.Tensor):
         if self.config["use_image_cond"] == False:
-            return torch.cat([action], dim=-1).flatten(start_dim=1)
+            obs = obs.squeeze(1) # TODO: change later
+            return torch.cat([obs, action], dim=-1).flatten(start_dim=1) # (B, obs_dim + action_dim)
         else:
             # TODO: Encode obs through vision encoder if needed
             raise NotImplementedError("Image conditioning not implemented")
@@ -113,7 +115,7 @@ class DiffusionTrainer(nn.Module):
             B = obs.shape[0]
              
             obs_latent = self.vae.get_encoding(obs).unsqueeze(1) # (B, 1, latent_dim)
-            cond = self.get_conditioning(obs, action)
+            cond = self.get_conditioning(obs_latent, action)
                 
 
             if sampler == "ddpm":
@@ -157,10 +159,11 @@ class DiffusionTrainer(nn.Module):
         # Get encoded features
         obs_latent = self.vae.get_encoding(obs).unsqueeze(1) # (B, 1, latent_dim)
         next_obs_latent = self.vae.get_encoding(next_obs).unsqueeze(1) # (B, 1, latent_dim)
-        cond = self.get_conditioning(obs, action) # (B, action_dim)
+        cond = self.get_conditioning(obs_latent, action) # (B, action_dim)
         
         # Initialize noisy latent with the observed features
-        noise = obs_latent
+        noise = obs_latent.detach()
+        # noise = torch.randn_like(obs_latent) # (B, 1, latent_dim)
 
         # sample a diffusion iteration for each data point
         timesteps = torch.randint(
@@ -172,7 +175,7 @@ class DiffusionTrainer(nn.Module):
         noise_next_obs_latent = self.noise_scheduler.add_noise(next_obs_latent, noise, timesteps) 
 
         # Predict back the noise
-        noise_pred = self.nets['noise_pred_net'](next_obs_latent, timesteps, global_cond=cond)
+        noise_pred = self.nets['noise_pred_net'](obs_latent, timesteps, global_cond=cond)
 
         # L2 loss
         loss = F.mse_loss(noise_pred, noise_next_obs_latent)
@@ -214,6 +217,16 @@ class DiffusionTrainer(nn.Module):
             
             # Compute the reconstruction loss
             next_obs_only = next_obs[:, self.config["n_channel"]*(self.config["history_length"]-1):] # last observation
+            
+            # imshow decoded_model_pred, next_obs_only in the same plot
+            import matplotlib.pyplot as plt
+            plt.figure()
+            plt.subplot(1, 2, 1)
+            plt.imshow(decoded_model_pred[0].permute(1, 2, 0).cpu().numpy())
+            plt.subplot(1, 2, 2)
+            plt.imshow(next_obs_only[0].permute(1, 2, 0).cpu().numpy())
+            plt.savefig("recon.png")
+            
             recon_loss = F.mse_loss(decoded_model_pred, next_obs_only)
             
             losses = {
