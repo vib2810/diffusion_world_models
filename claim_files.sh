@@ -1,1 +1,1 @@
-sudo chown -R $(whoami) c-swm/
+sudo chown -R $(whoami) c-swm/ diffusion_world_model/

@@ -31,23 +31,23 @@ class DiffusionTrainer(nn.Module):
         print("Loaded VAE weights from: ", config["vae_pretrained_ckeckpoint"])
         
         # create network objects
+        cond_dim = config["world_action_shape"]
+        cond_dim = cond_dim + config["latent_dim"] if config["condition_on_latent"] else cond_dim
         self.noise_pred_net = ConditionalUnet1D(
             input_dim=config["latent_dim"],
-            global_cond_dim=config["world_action_shape"]+config["latent_dim"]
+            global_cond_dim=cond_dim
         )
         self.noise_pred_net_eval = ConditionalUnet1D(
             input_dim=config["latent_dim"],
-            global_cond_dim=config["world_action_shape"]+config["latent_dim"]
+            global_cond_dim=cond_dim
         )
+        print("Condition Dim: ", cond_dim)
         self.nets = nn.ModuleDict({
             'noise_pred_net': self.noise_pred_net
         })
         self.inference_nets = nn.ModuleDict({
             'noise_pred_net': self.noise_pred_net_eval
         })
-        
-        if(self.config["use_image_cond"]):
-            raise NotImplementedError("Image conditioning not implemented")
 
         # for this demo, we use DDPMScheduler with 100 diffusion iterations
         self.noise_scheduler = DDPMScheduler(
@@ -77,7 +77,7 @@ class DiffusionTrainer(nn.Module):
         # Exponential Moving Average accelerates training and improves stability, holds a copy of the model weights
         self.ema = EMAModel(
             parameters=self.nets.parameters(),
-            power=0.75)
+            decay=0.75)
 
         self.optimizer = torch.optim.AdamW(params=self.nets.parameters(), lr=self.config["lr"], weight_decay=1e-6)
 
@@ -94,13 +94,11 @@ class DiffusionTrainer(nn.Module):
         # self.nets.eval()
         self.inference_nets.eval()
             
-    def get_conditioning(self, obs: torch.Tensor, action: torch.Tensor):
-        if self.config["use_image_cond"] == False:
-            obs = obs.squeeze(1) # TODO: change later
-            return torch.cat([obs, action], dim=-1).flatten(start_dim=1) # (B, obs_dim + action_dim)
-        else:
-            # TODO: Encode obs through vision encoder if needed
-            raise NotImplementedError("Image conditioning not implemented")
+    def get_conditioning(self, obs: torch.Tensor, action: torch.Tensor):        
+        if self.config["condition_on_latent"] == False:
+            return torch.cat([action], dim=-1).flatten(start_dim=1) # (B, action_dim)
+        else: 
+            return torch.cat([obs.squeeze(1), action], dim=-1).flatten(start_dim=1)
         
     def get_pred(self, obs: torch.Tensor, action: torch.Tensor, sampler = "ddim"):
         """
@@ -148,7 +146,7 @@ class DiffusionTrainer(nn.Module):
             
             return sample
         
-    def train_model_step(self, obs: torch.Tensor, action: torch.Tensor, next_obs: torch.Tensor):
+    def train_model_step(self, obs: torch.Tensor, action: torch.Tensor, next_obs: torch.Tensor, step=None):
         """
         Input: nimage, nagent_pos, naction in the dataset [normalized inputs]
         Train the model for one step
@@ -197,7 +195,7 @@ class DiffusionTrainer(nn.Module):
     def run_after_epoch(self):
         self.ema.copy_to(self.inference_nets.parameters())
     
-    def eval_model(self, obs, action, next_obs, sampler="ddim", save = False):
+    def eval_model(self, step, obs, action, next_obs, sampler="ddim", save = False):
         """
         Compute 2 losses:
         1. Latent space loss: MSE between predicted and actual latent space observation
@@ -218,23 +216,11 @@ class DiffusionTrainer(nn.Module):
             # Compute the reconstruction loss
             next_obs_only = next_obs[:, self.config["n_channel"]*(self.config["history_length"]-1):] # last observation
             
-            # imshow decoded_model_pred, next_obs_only in the same plot
-            # import matplotlib.pyplot as plt
-            # plt.figure()
-            # plt.subplot(1, 2, 1)
-
-            
-            # im1 = decoded_model_pred[0].permute(1, 2, 0).cpu().numpy()
-            # im2 = next_obs_only[0].permute(1, 2, 0).cpu().numpy()
             if save:
                 grid1 = torchvision.utils.make_grid(decoded_model_pred, normalize=True)
                 grid2 = torchvision.utils.make_grid(next_obs_only, normalize=True)
                 stacked = torch.cat([grid1, grid2], dim=2)
-                torchvision.utils.save_image(stacked, "recon.png")
-            # plt.imshow(decoded_model_pred[0].permute(1, 2, 0).cpu().numpy())
-            # plt.subplot(1, 2, 2)
-            # plt.imshow(next_obs_only[0].permute(1, 2, 0).cpu().numpy())
-            # plt.savefig("recon.png")
+                torchvision.utils.save_image(stacked, f"recon_{step}.png")
             
             recon_loss = F.mse_loss(decoded_model_pred, next_obs_only)
             

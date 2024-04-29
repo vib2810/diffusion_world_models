@@ -14,11 +14,11 @@ from dataset import StateTransitionsDataset
 class ModelTrainer:
     def __init__(self, config):
         self.config = config
-        self.is_state_based = config["is_state_based"]
 
         # Initialize the writer
-        curr_time= time.strftime("%d-%m-%Y_%H-%M-%S")
-        self.experiment_name_timed = config["experiment_name"] + "_" + curr_time
+        # curr_time= time.strftime("%d-%m-%Y_%H-%M-%S")
+        # self.experiment_name_timed = config["experiment_name"] + "_" + curr_time
+        self.experiment_name_timed = config["experiment_name"]
         self.logdir = 'train_logs/'+ self.experiment_name_timed
         if not(os.path.exists(self.logdir)):
             os.makedirs(self.logdir)
@@ -44,14 +44,14 @@ class ModelTrainer:
         self.device = config["device"]
 
     def train_model(self):
-        global_step = 0
+        self.global_step = 0
         for epoch_idx in range(self.config["num_epochs"]):
             print("-----Epoch {}-----".format(epoch_idx))
             
             # evaluate model
             eval_losses = self.evaluate_model()
             for k, v in eval_losses.items():
-                self.writer.add_scalar(f'Loss/{k}', v, global_step)
+                self.writer.add_scalar(f'Loss/{k}', v, self.global_step)
                 
             print("Eval losses: Latent: {}, Recon: {}".format(eval_losses["latent_loss"], eval_losses["recon_loss"]))
             if eval_losses["recon_loss"] < self.best_eval_loss_recon:
@@ -80,11 +80,11 @@ class ModelTrainer:
                 loss_cpu = self.model.train_model_step(obs, action, next_obs_stacked)
                 
                 # log to tensorboard
-                self.writer.add_scalar('Loss/train', loss_cpu, global_step)
-                global_step += 1
+                self.writer.add_scalar('Loss/train', loss_cpu, self.global_step)
+                self.global_step += 1
                 
-                if(not global_step%20):
-                    print("Epoch: {}, Step: {}, Loss: {}".format(epoch_idx, global_step, loss_cpu))
+                if(not self.global_step%20):
+                    print("Epoch: {}, Step: {}, Loss: {}".format(epoch_idx, self.global_step, loss_cpu))
             
             # evaluate model on test data
             self.model.run_after_epoch()
@@ -117,7 +117,7 @@ class ModelTrainer:
             
             B = obs.shape[0]
             save = True if idx == 1 else False
-            losses = self.model.eval_model(obs, action, next_obs_stacked, save = save)
+            losses = self.model.eval_model(self.global_step, obs, action, next_obs_stacked, save=save)
             # multiply by batch size
             for k, v in losses.items():
                 total_loss[k] += v*B
