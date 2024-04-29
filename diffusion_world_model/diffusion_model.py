@@ -31,8 +31,7 @@ class DiffusionTrainer(nn.Module):
         print("Loaded VAE weights from: ", config["vae_pretrained_ckeckpoint"])
         
         # create network objects
-        cond_dim = config["world_action_classes"]
-        cond_dim = cond_dim + config["latent_dim"] if config["condition_on_latent"] else cond_dim
+        cond_dim = config["world_action_classes"] + config["latent_dim"]
         self.noise_pred_net = ConditionalUnet1D(
             input_dim=config["latent_dim"],
             global_cond_dim=cond_dim
@@ -41,7 +40,6 @@ class DiffusionTrainer(nn.Module):
             input_dim=config["latent_dim"],
             global_cond_dim=cond_dim
         )
-        print("Condition Dim: ", cond_dim)
         self.nets = nn.ModuleDict({
             'noise_pred_net': self.noise_pred_net
         })
@@ -89,7 +87,36 @@ class DiffusionTrainer(nn.Module):
             # num_training_steps= self.num_batches* self.num_epochs
             num_training_steps= self.config["num_epochs"]*self.config["num_batches"]
         )
+        
+        self.norm_max = -torch.ones(config["latent_dim"]).to(self.device)*np.inf
+        self.norm_min = torch.ones(config["latent_dim"]).to(self.device)*np.inf
+    
+    def get_normalization_params_step(self, obs, next_obs):
+        """
+        Get the normalization parameters for the latent space
+        """
+        with torch.no_grad():
+            latent = self.vae.get_encoding(obs).unsqueeze(1)
+            self.norm_max = torch.maximum(self.norm_max, latent.max(dim=0).values)
+            self.norm_min = torch.minimum(self.norm_min, latent.min(dim=0).values)
+            next_latent = self.vae.get_encoding(next_obs).unsqueeze(1)
+            self.norm_max = torch.maximum(self.norm_max, next_latent.max(dim=0).values)
+            self.norm_min = torch.minimum(self.norm_min, next_latent.min(dim=0).values)
+        
+    def print_normalization_params(self):
+        print("MAX VAE LATENT: ", self.norm_max)
+        print("MIN VAE LATENT: ", self.norm_min)
 
+    def get_normalized_latent(self, latent): # from range [norm_min, norm_max] to [-1, 1]
+        ndata = (latent - self.norm_min) / (self.norm_max - self.norm_min)
+        ndata = ndata * 2 - 1
+        return ndata
+
+    def get_unnormalized_latent(self, ndata): # from range [-1, 1] to [norm_min, norm_max]
+        ndata = (ndata + 1) / 2
+        latent = ndata * (self.norm_max - self.norm_min) + self.norm_min
+        return latent
+        
     def eval(self):
         # self.nets.eval()
         self.inference_nets.eval()
@@ -97,11 +124,8 @@ class DiffusionTrainer(nn.Module):
     def get_conditioning(self, obs: torch.Tensor, action: torch.Tensor):    
         # action shape: (B, 1)
         action = F.one_hot(action.long(), num_classes=self.config["world_action_classes"]).float()    # (B, 1, self.config["world_action_classes"])
-        if self.config["condition_on_latent"] == False:
-            return action.squeeze(1)
-        else: 
-            action = action.squeeze(1)
-            return torch.cat([obs.squeeze(1), action], dim=-1).flatten(start_dim=1) # (B, latent_dim + action_dim)
+        action = action.squeeze(1)
+        return torch.cat([obs.squeeze(1), action], dim=-1).flatten(start_dim=1) # (B, latent_dim + action_dim)
         
     def get_pred(self, obs: torch.Tensor, action: torch.Tensor, sampler = "ddim"):
         """
@@ -116,8 +140,9 @@ class DiffusionTrainer(nn.Module):
             B = obs.shape[0]
              
             obs_latent = self.vae.get_encoding(obs).unsqueeze(1).detach() # (B, 1, latent_dim)
+            n_obs_latent = self.get_normalized_latent(obs_latent)
             noisy_latent = torch.randn_like(obs_latent).to(self.device) # (B, C, H, W)
-            cond = self.get_conditioning(obs_latent, action)
+            cond = self.get_conditioning(n_obs_latent, action)
                 
             if sampler == "ddpm":
                 eval_sampler = self.noise_scheduler
@@ -134,7 +159,7 @@ class DiffusionTrainer(nn.Module):
             # sample
             for k in eval_sampler.timesteps:
                 # predict noise
-                noise_pred = self.nets['noise_pred_net']( # TODO: change to inference_nets later
+                noise_pred = self.nets['noise_pred_net'](# TODO: change to inference_nets
                     sample=sample,
                     timestep=k,
                     global_cond=cond
@@ -148,8 +173,11 @@ class DiffusionTrainer(nn.Module):
                 ).prev_sample
             
             # get predicted next_obs_latent
-            next_obs_latent = sample + obs_latent
-            return next_obs_latent
+            return_val = sample
+            if self.config["pred_residual"] == True:
+                return_val = n_obs_latent + return_val
+            return_val = self.get_unnormalized_latent(return_val)
+            return return_val
                 
     def train_model_step(self, obs: torch.Tensor, action: torch.Tensor, next_obs: torch.Tensor, step=None):
         """
@@ -162,10 +190,15 @@ class DiffusionTrainer(nn.Module):
         # Get encoded features
         obs_latent = self.vae.get_encoding(obs).unsqueeze(1).detach() # (B, 1, latent_dim)
         next_obs_latent = self.vae.get_encoding(next_obs).unsqueeze(1).detach() # (B, 1, latent_dim)
-        cond = self.get_conditioning(obs_latent, action) # (B, action_dim)
+        
+        # Normalize the latent space
+        n_obs_latent = self.get_normalized_latent(obs_latent)
+        n_next_obs_latent = self.get_normalized_latent(next_obs_latent)
+        
+        cond = self.get_conditioning(n_obs_latent, action) # (B, action_dim)
         
         # Initialize random noise
-        noise = torch.randn_like(obs_latent) # (B, 1, latent_dim)
+        noise = torch.randn_like(n_obs_latent) # (B, 1, latent_dim)
 
         # sample a diffusion iteration for each data point
         timesteps = torch.randint(
@@ -174,11 +207,15 @@ class DiffusionTrainer(nn.Module):
         ).long()
         
         # Forward diffusion step: Add noise gt_residual to intepolate between gt_residual and gaussian noise
-        gt_diff = (next_obs_latent - obs_latent).detach()
-        gt_diff_noisy = self.noise_scheduler.add_noise(gt_diff, noise, timesteps) 
+        if self.config["pred_residual"]==True:
+            gt_diff = (n_next_obs_latent - n_obs_latent).detach()
+            gt_diff_noisy = self.noise_scheduler.add_noise(gt_diff, noise, timesteps) 
         
-        # Predict back the noise
-        noise_pred = self.nets['noise_pred_net'](gt_diff_noisy, timesteps, global_cond=cond)
+            # Predict back the noise
+            noise_pred = self.nets['noise_pred_net'](gt_diff_noisy, timesteps, global_cond=cond)
+        else:
+            next_obs_latent_noisy = self.noise_scheduler.add_noise(n_next_obs_latent, noise, timesteps)
+            noise_pred = self.nets['noise_pred_net'](next_obs_latent_noisy, timesteps, global_cond=cond)
 
         # L2 loss
         loss = F.mse_loss(noise_pred, noise)
@@ -237,9 +274,12 @@ class DiffusionTrainer(nn.Module):
         self.inference_nets.to(self.device)
         self.vae.to(self.device)
                     
-    def load_model_weights(self, model_weights):
+    def load_model_weights(self, ckpt_path):
         """
         Load the model weights
         """
         self.put_network_on_device()
-        self.load_state_dict(model_weights)
+        model_data = torch.load(ckpt_path)
+        self.load_state_dict(model_data["model_weights"])
+        self.norm_max = model_data["norm_max"]
+        self.norm_min = model_data["norm_min"]

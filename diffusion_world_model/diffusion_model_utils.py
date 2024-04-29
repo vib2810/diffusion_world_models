@@ -126,7 +126,7 @@ class ConditionalUnet1D(nn.Module):
         input_dim,
         global_cond_dim,
         diffusion_step_embed_dim=256,
-        down_dims=[8,16,32],
+        down_dims=[256,512,1024],
         kernel_size=5,
         n_groups=8
         ):

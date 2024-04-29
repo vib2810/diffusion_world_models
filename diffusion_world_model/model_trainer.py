@@ -42,6 +42,23 @@ class ModelTrainer:
         
         self.best_eval_loss_recon = 1e10
         self.device = config["device"]
+        self.store_model_normalization()
+    
+    def store_model_normalization(self):
+        print("Computing Normalization Parameters")
+        for nbatch in self.train_dataloader:
+            obs, action, next_obs = nbatch
+            obs = obs.float().to(self.device)
+            next_obs = next_obs.float().to(self.device)
+            self.model.get_normalization_params_step(obs, next_obs)
+        
+        for nbatch in self.eval_dataloader:
+            obs, action, next_obs = nbatch
+            obs = obs.float().to(self.device)
+            next_obs = next_obs.float().to(self.device)
+            self.model.get_normalization_params_step(obs, next_obs)
+        
+        self.model.print_normalization_params()
 
     def train_model(self):
         self.global_step = 0
@@ -87,6 +104,8 @@ class ModelTrainer:
         save_dict = {}
         save_dict["model_weights"] = self.model.state_dict()
         save_dict["best_model_epoch"] = self.best_model_epoch
+        save_dict["norm_max"] = self.model.norm_max
+        save_dict["norm_min"] = self.model.norm_min
         
         # add train params to save_dict
         save_dict.update(self.config)
@@ -103,7 +122,7 @@ class ModelTrainer:
         stacked_samples = None
         for idx, nbatch in enumerate(self.eval_dataloader):
                 # Extract data
-            obs, action, next_obs = nbatch
+            obs, action, next_obs = nbatch # shapes(B,3,64,64), (B), (B,3,64,64)
             
             obs = obs.float().to(self.device)
             action = action.to(self.device)
