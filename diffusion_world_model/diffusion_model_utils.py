@@ -226,7 +226,7 @@ class ConditionalUnet1D(nn.Module):
         expanded_shape=False
         if sample.shape[-1] == 1:
             expanded_shape=True
-            sample = sample.expand(sample.shape[0], sample.shape[1], 4) # (B,C,4)
+            sample = sample.expand(sample.shape[0], sample.shape[1], 4) # (B,C,4) = B x latent_dim x 4
 
         # 1. time
         timesteps = timestep

@@ -4,6 +4,7 @@ import numpy as np
 from torchvision import transforms
 import torch.utils.data as data
 import torch
+
 def load_list_dict_h5py(fname):
     """Restore list of dictionaries containing numpy arrays from h5py file."""
     array_dict = list()

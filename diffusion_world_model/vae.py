@@ -14,8 +14,8 @@ class Encoder(nn.Module):
             nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
             nn.ReLU()
         )
-        self.fc_mu = nn.Linear(128 * 8 * 8, latent_dim)
-        self.fc_logvar = nn.Linear(128 * 8 * 8, latent_dim)
+        self.fc_mu = nn.Linear(8192, latent_dim)
+        self.fc_logvar = nn.Linear(8192, latent_dim)
 
     def forward(self, x):
         x = self.conv(x)
@@ -109,12 +109,11 @@ class VAE(pl.LightningModule):
             }, prog_bar=True, on_epoch=True
         )
         if batch_idx == 0:
-        #     self.log_images(obs, x_recon)
-            
+        
             grid = torchvision.utils.make_grid(obs) 
-            self.logger.experiment.add_image('original_images', grid, 0) 
+            self.logger.experiment.add_image('original_images', grid, self.current_epoch) 
             grid = torchvision.utils.make_grid(x_recon) 
-            self.logger.experiment.add_image('generated_images', grid, 0) 
+            self.logger.experiment.add_image('generated_images', grid, self.current_epoch) 
 
         return loss
 
@@ -128,8 +127,8 @@ if __name__ == '__main__':
         'n_epochs': 10,
         'batch_size': 32,
         'n_channel': 3,
-        'latent_dim': 128,
-        'history_length': 3
+        'latent_dim': 16,
+        'history_length': 1
     }
     model = VAE(config)
 

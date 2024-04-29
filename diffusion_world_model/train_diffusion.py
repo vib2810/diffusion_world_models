@@ -36,12 +36,12 @@ if __name__ == "__main__":
         'history_length': 1, # Number of frames to stack as input to encoder
         'num_diffusion_iters': 100,
         'num_ddim_iters': 10, # for DDIM sampling
-        'vae_pretrained_ckeckpoint': '/home/punygod_admin/pgm/pgm_project/diffusion_world_model/lightning_logs/version_1/checkpoints/epoch=199-step=62600.ckpt',
+        'vae_pretrained_ckeckpoint': '/home/punygod_admin/pgm/pgm_project/diffusion_world_model/lightning_logs/version_7/checkpoints/epoch96.ckpt',
         'condition_on_latent': False, # If false, only condition on actions, else condition on actions + previous observations latent
-        'latent_dim': 128, # Dimension of the latent space
+        'latent_dim': 16, # Dimension of the latent space
         'n_channel': 3, # Number of channels in the world image
         'world_image_shape': (64, 64), # Shape of the world image
-        'world_action_shape': 1, # size of the action space
+        'world_action_classes': 20, # size of the action space
     }
 
     config["experiment_name"] = 'diffusion_model' + \
@@ -49,6 +49,7 @@ if __name__ == "__main__":
                                     '_history_' + str(config['history_length']) + \
                                     '_latent_' + str(config['latent_dim']) + \
                                     '_lr_' + str(config['lr']) +\
-                                    '_conditionOnLatent_' + str(config['condition_on_latent']) + \                                                                   
+                                    '_conditionOnLatent_' + str(config['condition_on_latent'])  +\
+                                    '_onehot_newdata_latent16'                                                          
     model_trainer = ModelTrainer(config)
     model_trainer.train_model()

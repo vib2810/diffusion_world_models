@@ -27,8 +27,8 @@ class ModelTrainer:
         
         # Initialize the dataset
         root = f'{config["dataset_root"]}/{config["environment"]}'
-        train_set = StateTransitionsDataset(f'{root}_train_hist_{config["history_length"]}.h5')
-        val_set = StateTransitionsDataset(f'{root}_eval_hist_{config["history_length"]}.h5')
+        train_set = StateTransitionsDataset(f'{root}_train.h5')
+        val_set = StateTransitionsDataset(f'{root}_eval.h5')
         self.train_dataloader = data.DataLoader(train_set, batch_size=config['batch_size'], shuffle=True, num_workers=4)
         self.eval_dataloader = data.DataLoader(val_set, batch_size=config['batch_size'], shuffle=False, num_workers=4)
         
@@ -49,9 +49,12 @@ class ModelTrainer:
             print("-----Epoch {}-----".format(epoch_idx))
             
             # evaluate model
-            eval_losses = self.evaluate_model()
+            eval_losses, stacked_samples = self.evaluate_model()
             for k, v in eval_losses.items():
                 self.writer.add_scalar(f'Loss/{k}', v, self.global_step)
+            # log stacked_samples as an image
+            if stacked_samples is not None:
+                self.writer.add_image('recon_samples', stacked_samples, self.global_step)
                 
             print("Eval losses: Latent: {}, Recon: {}".format(eval_losses["latent_loss"], eval_losses["recon_loss"]))
             if eval_losses["recon_loss"] < self.best_eval_loss_recon:
@@ -63,21 +66,12 @@ class ModelTrainer:
             for nbatch in self.train_dataloader:
                 # Extract data
                 obs, action, next_obs = nbatch
-                # save next_obs as an image
-                # import matplotlib.pyplot as plt
-                # plt.figure()
-                # plt.imshow(next_obs[0].permute(1, 2, 0))
-                # plt.savefig("next_obs.png")
-                
-                # create next_obs_stacked
-                next_obs_stacked = torch.cat([obs[:, self.config["n_channel"]:], next_obs], dim=1) # make stacked next_obs
-                next_obs_stacked = next_obs_stacked.detach()
                 
                 obs = obs.float().to(self.device)
                 action = action.to(self.device)
-                next_obs_stacked = next_obs_stacked.float().to(self.device)
+                next_obs = next_obs.float().to(self.device)
                 
-                loss_cpu = self.model.train_model_step(obs, action, next_obs_stacked)
+                loss_cpu = self.model.train_model_step(obs, action, next_obs)
                 
                 # log to tensorboard
                 self.writer.add_scalar('Loss/train', loss_cpu, self.global_step)
@@ -106,22 +100,24 @@ class ModelTrainer:
         """
         # Evaluate the model by computing the MSE on test data
         total_loss = {"latent_loss": 0, "recon_loss": 0}
+        stacked_samples = None
         for idx, nbatch in enumerate(self.eval_dataloader):
+                # Extract data
             obs, action, next_obs = nbatch
-            next_obs_stacked = torch.cat([obs[:, self.config["n_channel"]:], next_obs], dim=1) # make stacked next_obs
-            next_obs_stacked = next_obs_stacked.detach()
             
             obs = obs.float().to(self.device)
             action = action.to(self.device)
-            next_obs_stacked = next_obs_stacked.float().to(self.device)
-            
+            next_obs = next_obs.float().to(self.device)
+                
             B = obs.shape[0]
             save = True if idx == 1 else False
-            losses = self.model.eval_model(self.global_step, obs, action, next_obs_stacked, save=save)
+            losses, stacked_i = self.model.eval_model(self.global_step, obs, action, next_obs, save=save)
+            if save:
+                stacked_samples = stacked_i
             # multiply by batch size
             for k, v in losses.items():
                 total_loss[k] += v*B
         
         # Normalize the losses
         normalized_losses = {k: v/len(self.eval_dataloader.dataset) for k, v in total_loss.items()}
-        return normalized_losses
+        return normalized_losses, stacked_samples

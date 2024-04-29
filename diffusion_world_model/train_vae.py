@@ -14,12 +14,12 @@ def train(args):
         'n_epochs': 200,
         'batch_size': 32,
         'n_channel': 3,
-        'latent_dim': 128,
+        'latent_dim': 16,
     }
     config.update(vars(args)) # add argparse arguments
     root = f'{config["dataset_root"]}/{config["environment"]}'
-    train_set = StateTransitionsDataset(f'{root}_train_hist_{config["history_length"]}.h5')
-    val_set = StateTransitionsDataset(f'{root}_eval_hist_{config["history_length"]}.h5')
+    train_set = StateTransitionsDataset(f'{root}_train.h5')
+    val_set = StateTransitionsDataset(f'{root}_eval.h5')
     model = VAE(
         config = config
     )
