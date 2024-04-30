@@ -201,8 +201,7 @@ def generate_3_body_problem_dataset(dest,
             print(i)
         sequences.append(generate_sequence())
     sequences = np.array(sequences, dtype=np.uint8)
-    import os
-    os.makedirs(os.path.dirname(dest), exist_ok=True)
+
     np.savez_compressed(dest,
                         train_x=sequences[:train_set_size],
                         valid_x=sequences[
@@ -221,4 +220,4 @@ def generate_3_body_problem_dataset(dest,
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)
     fig.tight_layout()
-    fig.savefig(dest.split(".")[0] + "_samples.png")
+    fig.savefig(dest.split(".")[0] + "_samples.jpg")

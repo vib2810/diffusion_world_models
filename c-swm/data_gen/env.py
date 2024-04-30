@@ -22,8 +22,6 @@ from gym import logger
 
 import numpy as np
 from PIL import Image
-from collections import deque
-
 
 
 class RandomAgent(object):
@@ -37,13 +35,10 @@ class RandomAgent(object):
         return self.action_space.sample()
 
 
-def crop_normalize(img, crop_ratio = None, img_size = (64, 64)):
-    if crop_ratio is not None:
-        img = img[crop_ratio[0]:crop_ratio[1]]
-    print(img.shape)
-    img = Image.fromarray(img).resize(img_size, Image.ANTIALIAS)
+def crop_normalize(img, crop_ratio):
+    img = img[crop_ratio[0]:crop_ratio[1]]
+    img = Image.fromarray(img).resize((50, 50), Image.ANTIALIAS)
     return np.transpose(np.array(img), (2, 0, 1)) / 255
-
 
 
 if __name__ == '__main__':
@@ -58,8 +53,6 @@ if __name__ == '__main__':
                         help='Run atari mode (stack multiple frames).')
     parser.add_argument('--seed', type=int, default=1,
                         help='Random seed.')
-    parser.add_argument('--history_length', type=int, default=3)
-    
     args = parser.parse_args()
 
     logger.set_level(logger.INFO)
@@ -84,16 +77,11 @@ if __name__ == '__main__':
     elif args.env_id == 'SpaceInvadersDeterministic-v4':
         crop = (30, 200)
         warmstart = 50
-    else:
-        crop = None
 
     if args.atari:
         env._max_episode_steps = warmstart + 11
 
     replay_buffer = []
-
-    img_size = (64, 64)
-    history_length = args.history_length
 
     for i in range(episode_count):
 
@@ -110,45 +98,44 @@ if __name__ == '__main__':
             for _ in range(warmstart):
                 action = agent.act(ob, reward, done)
                 ob, _, _, _ = env.step(action)
-            prev_ob = crop_normalize(ob, crop, img_size)
+            prev_ob = crop_normalize(ob, crop)
             ob, _, _, _ = env.step(0)
-            ob = crop_normalize(ob, crop, img_size)
+            ob = crop_normalize(ob, crop)
 
-        obs_history = deque(maxlen=history_length)
-        while True:
-            # if args.atari:
-            #     ob = crop_normalize(ob, crop, img_size)
-            # obs_history.append(ob[1])
-            # if len(obs_history) < history_length:
-            #     continue
-            # obs_concat = np.stack(obs_history, axis=0)
-            replay_buffer[i]['obs'].append(ob[1].copy())
-            action = agent.act(ob, reward, done)
-            ob, reward, done, _ = env.step(action)
-            if args.atari:
-                ob = crop_normalize(ob, crop, img_size)
+            while True:
+                replay_buffer[i]['obs'].append(
+                    np.concatenate((ob, prev_ob), axis=0))
+                prev_ob = ob
 
+                action = agent.act(ob, reward, done)
+                ob, reward, done, _ = env.step(action)
+                ob = crop_normalize(ob, crop)
 
-            replay_buffer[i]['action'].append(action)
-            replay_buffer[i]['next_obs'].append(ob[1].copy())
+                replay_buffer[i]['action'].append(action)
+                replay_buffer[i]['next_obs'].append(
+                    np.concatenate((ob, prev_ob), axis=0))
 
-            if done:
-                break
-        # print(len(replay_buffer[i]['obs']))
-        # replay_buffer[i]['obs'] = np.stack(replay_buffer[i]['obs'])
-        # replay_buffer[i]['action'] = np.array(replay_buffer[i]['action'])
-        # replay_buffer[i]['next_obs'] = np.stack(replay_buffer[i]['next_obs'])
+                if done:
+                    break
+        else:
 
-        # print(replay_buffer[i]['obs'].shape)
-        # print(replay_buffer[i]['action'].shape)
-        # print(replay_buffer[i]['next_obs'].shape)
+            while True:
+                replay_buffer[i]['obs'].append(ob[1])
+
+                action = agent.act(ob, reward, done)
+                ob, reward, done, _ = env.step(action)
+
+                replay_buffer[i]['action'].append(action)
+                replay_buffer[i]['next_obs'].append(ob[1])
+
+                if done:
+                    break
 
         if i % 10 == 0:
             print("iter "+str(i))
-    print("writing file")
+
     env.close()
-    fname = args.fname[:-3]
-    fname += '_hist_' + str(history_length) + '.h5'
+
     # Save replay buffer to disk.
-    utils.save_list_dict_h5py(replay_buffer, fname)
+    utils.save_list_dict_h5py(replay_buffer, args.fname)
 

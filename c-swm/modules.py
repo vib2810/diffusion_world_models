@@ -4,7 +4,103 @@ import numpy as np
 
 import torch
 from torch import nn
+import sys
+from vae import VAE
+class ContrastiveSWMwithFrozenVAE(nn.Module):
+    """Main module for a Contrastively-trained Structured World Model (C-SWM).
 
+    Args:
+        embedding_dim: Dimensionality of abstract state space.
+        input_dims: Shape of input observation.
+        hidden_dim: Number of hidden units in encoder and transition model.
+        action_dim: Dimensionality of action space.
+        num_objects: Number of object slots.
+    """
+    def __init__(self, embedding_dim, input_dims, hidden_dim, action_dim,
+                 num_objects, hinge=1., sigma=0.5, encoder='large',
+                 ignore_action=False, copy_action=False):
+        super(ContrastiveSWMwithFrozenVAE, self).__init__()
+        print("ContrastiveSWM init")
+        self.hidden_dim = hidden_dim
+        self.embedding_dim = embedding_dim
+        self.action_dim = action_dim
+        self.num_objects = num_objects
+        self.hinge = hinge
+        self.sigma = sigma
+        self.ignore_action = ignore_action
+        self.copy_action = copy_action
+        
+        self.pos_loss = 0
+        self.neg_loss = 0
+
+        num_channels = input_dims[0]
+        width_height = input_dims[1:]
+
+        config = {
+            'batch_size': 32,
+            'n_channel': 3,
+            'history_length' : 1,
+            'latent_dim': 16,
+        }
+        self.vae = VAE(config)
+        model_path = '../diffusion_world_model/lightning_logs/version_7/checkpoints/epoch=109-step=343750.ckpt'
+        weights = torch.load(model_path)
+        self.vae.load_state_dict(weights['state_dict'])
+        
+
+        self.transition_model = TransitionGNN(
+            input_dim=embedding_dim,
+            hidden_dim=hidden_dim,
+            action_dim=action_dim,
+            num_objects=num_objects,
+            ignore_action=ignore_action,
+            copy_action=copy_action)
+
+        self.width = width_height[0]
+        self.height = width_height[1]
+        print("ContrastiveSWM init done")
+
+    def energy(self, state, action, next_state, no_trans=False):
+        """Energy function based on normalized squared L2 norm."""
+
+        norm = 0.5 / (self.sigma**2)
+
+        if no_trans:
+            diff = state - next_state
+        else:
+            pred_trans = self.transition_model(state, action)
+            diff = state + pred_trans - next_state
+
+        return norm * diff.pow(2).sum(2).mean(1)
+
+    def transition_loss(self, state, action, next_state):
+        return self.energy(state, action, next_state).mean()
+
+    def contrastive_loss(self, obs, action, next_obs):
+
+        state = self.vae.get_encoding(obs).unsqueeze(1) # (B, 1, latent_dim) GT next latent space
+        next_state = self.vae.get_encoding(next_obs).unsqueeze(1) # (B, 1, latent_dim) GT next latent space
+
+        # Sample negative state across episodes at random
+        batch_size = state.size(0)
+        perm = np.random.permutation(batch_size)
+        neg_state = state[perm]
+
+        self.pos_loss = self.energy(state, action, next_state)
+        zeros = torch.zeros_like(self.pos_loss)
+        
+        self.pos_loss = self.pos_loss.mean()
+        self.neg_loss = torch.max(
+            zeros, self.hinge - self.energy(
+                state, action, neg_state, no_trans=True)).mean()
+
+        loss = self.pos_loss + self.neg_loss
+
+        return loss
+
+    def forward(self, obs):
+        return self.vae.get_encoding(obs).unsqueeze(1)
+    
 
 class ContrastiveSWM(nn.Module):
     """Main module for a Contrastively-trained Structured World Model (C-SWM).
@@ -149,7 +245,8 @@ class TransitionGNN(torch.nn.Module):
             utils.get_act_fn(act_fn),
             nn.Linear(hidden_dim, hidden_dim))
 
-        node_input_dim = hidden_dim + input_dim + self.action_dim
+        # node_input_dim = hidden_dim + input_dim + self.action_dim
+        node_input_dim = 36
 
         self.node_mlp = nn.Sequential(
             nn.Linear(node_input_dim, hidden_dim),
@@ -175,6 +272,8 @@ class TransitionGNN(torch.nn.Module):
             out = torch.cat([node_attr, agg], dim=1)
         else:
             out = node_attr
+
+
         return self.node_mlp(out)
 
     def _get_edge_list_fully_connected(self, batch_size, num_objects, cuda):
@@ -210,7 +309,9 @@ class TransitionGNN(torch.nn.Module):
         cuda = states.is_cuda
         batch_size = states.size(0)
         num_nodes = states.size(1)
-
+        
+        
+        
         # states: [batch_size (B), num_objects, embedding_dim]
         # node_attr: Flatten states tensor to [B * num_objects, embedding_dim]
         node_attr = states.view(-1, self.input_dim)
@@ -218,6 +319,7 @@ class TransitionGNN(torch.nn.Module):
         edge_attr = None
         edge_index = None
 
+        
         if num_nodes > 1:
             # edge_index: [B * (num_objects*[num_objects-1]), 2] edge list
             edge_index = self._get_edge_list_fully_connected(
@@ -226,7 +328,7 @@ class TransitionGNN(torch.nn.Module):
             row, col = edge_index
             edge_attr = self._edge_model(
                 node_attr[row], node_attr[col], edge_attr)
-
+        # num_nodes = 5
         if not self.ignore_action:
 
             if self.copy_action:
@@ -234,17 +336,22 @@ class TransitionGNN(torch.nn.Module):
                     action, self.action_dim).repeat(1, self.num_objects)
                 action_vec = action_vec.view(-1, self.action_dim)
             else:
+                # breakpoint()
+                
                 action_vec = utils.to_one_hot(
                     action, self.action_dim * num_nodes)
-                action_vec = action_vec.view(-1, self.action_dim)
-
+                action_vec = action_vec.view(batch_size,-1)
+            # breakpoint()
             # Attach action to each state
+            
             node_attr = torch.cat([node_attr, action_vec], dim=-1)
 
         node_attr = self._node_model(
             node_attr, edge_index, edge_attr)
 
         # [batch_size, num_nodes, hidden_dim]
+        # breakpoint()
+        # num_nodes = 1
         return node_attr.view(batch_size, num_nodes, -1)
 
 

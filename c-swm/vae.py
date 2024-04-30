@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import pytorch_lightning as pl
 import torchvision
 class Encoder(nn.Module):
     def __init__(self, n_channel, latent_dim):
@@ -47,15 +46,13 @@ class Decoder(nn.Module):
         x = self.conv(x)
         return x
 
-class VAE(pl.LightningModule):
+class VAE(nn.Module):
     def __init__(self,  config):
         super(VAE, self).__init__()
         self.config = config
         n_channel = config['n_channel']
         n_stack = config['history_length']
         latent_dim = config['latent_dim']
-    
-        self.save_hyperparameters(config)
         self.encoder = Encoder(n_channel * n_stack, latent_dim)
         self.decoder = Decoder(latent_dim, n_channel)
 
@@ -71,6 +68,9 @@ class VAE(pl.LightningModule):
         recon_x = self.decoder(z)
         return recon_x, mu, logvar
 
+    def decode(self, latent):
+        return self.decoder(latent.squeeze(1))
+
     def reparameterize(self, mu, logvar):
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
@@ -79,48 +79,6 @@ class VAE(pl.LightningModule):
     def get_encoding(self, x):
         mu, logvar = self.encoder(x)
         return mu
-
-    def training_step(self, batch, batch_idx):
-        obs, action, next_obs = batch
-        x_recon, mu, logvar = self(obs)
-        # recon_loss = F.mse_loss(x_recon, obs, reduction='sum')
-        recon_loss = F.mse_loss(x_recon, next_obs, reduction='sum')
-        kl_divergence = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-        loss = recon_loss + kl_divergence
-        self.log_dict(
-            {
-                "train/loss": loss,
-                "train/kl_divergence": kl_divergence,
-                "train/recon_loss": recon_loss,
-            }, prog_bar=True, on_epoch=True
-        )
-        return loss
-    
-    def validation_step(self, batch, batch_idx):
-        obs, action, next_obs = batch
-        x_recon, mu, logvar = self(obs)
-        # recon_loss = F.mse_loss(x_recon, obs, reduction='sum')
-        recon_loss = F.mse_loss(x_recon, next_obs, reduction='sum')
-        kl_divergence = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-        loss = recon_loss + kl_divergence
-        self.log_dict(
-            {
-                "val/loss": loss,
-                "val/recon_loss": recon_loss,
-                "val/kl_divergence": kl_divergence
-            }, prog_bar=True, on_epoch=True
-        )
-        if batch_idx == 0:
-        
-            grid = torchvision.utils.make_grid(obs) 
-            self.logger.experiment.add_image('original_images', grid, self.current_epoch) 
-            grid = torchvision.utils.make_grid(x_recon) 
-            self.logger.experiment.add_image('generated_images', grid, self.current_epoch) 
-
-        return loss
-
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.config['lr'])
 
 
 if __name__ == '__main__':

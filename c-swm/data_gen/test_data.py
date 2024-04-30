@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import h5py
 root = 'data/'
 
-file = 'shapes_train_hist_1.h5'
+file = 'shapes_train.h5'
 
 with h5py.File(root + file, 'r') as hf:
     # Initialize an empty list to store dictionaries

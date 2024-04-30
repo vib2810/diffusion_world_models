@@ -23,8 +23,6 @@ parser.add_argument('--epochs', type=int, default=100,
 parser.add_argument('--learning-rate', type=float, default=5e-4,
                     help='Learning rate.')
 
-parser.add_argument('--encoder', type=str, default='small',
-                    help='Object extrator CNN size (e.g., `small`).')
 parser.add_argument('--sigma', type=float, default=0.5,
                     help='Energy scale.')
 parser.add_argument('--hinge', type=float, default=1.,
@@ -32,11 +30,11 @@ parser.add_argument('--hinge', type=float, default=1.,
 
 parser.add_argument('--hidden-dim', type=int, default=512,
                     help='Number of hidden units in transition MLP.')
-parser.add_argument('--embedding-dim', type=int, default=2,
+parser.add_argument('--embedding-dim', type=int, default=16,
                     help='Dimensionality of embedding.')
 parser.add_argument('--action-dim', type=int, default=4,
                     help='Dimensionality of action space.')
-parser.add_argument('--num-objects', type=int, default=5,
+parser.add_argument('--num-objects', type=int, default=1,
                     help='Number of object slots in model.')
 parser.add_argument('--ignore-action', action='store_true', default=False,
                     help='Ignore action in GNN transition model.')
@@ -70,11 +68,11 @@ parser.add_argument('--save-folder', type=str,
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
-wandb.init(
-    # set the wandb project where this run will be logged
-    project="pgm",
-    config = vars(args)
-)
+# wandb.init(
+#     # set the wandb project where this run will be logged
+#     project="pgm",
+#     config = vars(args)
+# )
 print("Started Script with CUDA: ", args.cuda)
 
 now = datetime.datetime.now()
@@ -120,7 +118,7 @@ obs = train_loader.__iter__().next()[0]
 input_shape = obs[0].size()
 
 print("Creating model...")
-model = modules.ContrastiveSWM(
+model = modules.ContrastiveSWMwithFrozenVAE(
     embedding_dim=args.embedding_dim,
     hidden_dim=args.hidden_dim,
     action_dim=args.action_dim,
@@ -130,39 +128,13 @@ model = modules.ContrastiveSWM(
     hinge=args.hinge,
     ignore_action=args.ignore_action,
     copy_action=args.copy_action,
-    encoder=args.encoder).to(device)
+    ).to(device)
 print("Model created")
 
-model.apply(utils.weights_init)
-
+# optimizer only for transition model, rest is frozen
 optimizer = torch.optim.Adam(
-    model.parameters(),
+    model.transition_model.parameters(),
     lr=args.learning_rate)
-
-if args.decoder:
-    if args.encoder == 'large':
-        decoder = modules.DecoderCNNLarge(
-            input_dim=args.embedding_dim,
-            num_objects=args.num_objects,
-            hidden_dim=args.hidden_dim // 16,
-            output_size=input_shape).to(device)
-    elif args.encoder == 'medium':
-        decoder = modules.DecoderCNNMedium(
-            input_dim=args.embedding_dim,
-            num_objects=args.num_objects,
-            hidden_dim=args.hidden_dim // 16,
-            output_size=input_shape).to(device)
-    elif args.encoder == 'small':
-        decoder = modules.DecoderCNNSmall(
-            input_dim=args.embedding_dim,
-            num_objects=args.num_objects,
-            hidden_dim=args.hidden_dim // 16,
-            output_size=input_shape).to(device)
-    decoder.apply(utils.weights_init)
-    optimizer_dec = torch.optim.Adam(
-        decoder.parameters(),
-        lr=args.learning_rate)
-
 
 # Train model.
 print('Starting model training...')
@@ -173,23 +145,18 @@ best_loss = 1e9
 for epoch in range(1, args.epochs + 1):
     model.train()
     train_loss = 0
-
+    avg_mse_latent = 0
     for batch_idx, data_batch in enumerate(train_loader):
         data_batch = [tensor.to(device) for tensor in data_batch]
         optimizer.zero_grad()
-
+        obs, action, next_obs = data_batch
+        state = model.vae.get_encoding(obs).unsqueeze(1)
+        rec = model.vae.decode(state.squeeze(1))
+        next_state_pred = state + model.transition_model(state, action)
+        next_rec = model.vae.decode(next_state_pred.squeeze(1))
         if args.decoder:
-            optimizer_dec.zero_grad()
-            obs, action, next_obs = data_batch
-            objs = model.obj_extractor(obs)
-            state = model.obj_encoder(objs)
-
-            rec = torch.sigmoid(decoder(state))
             loss = F.mse_loss(
                 rec, obs, reduction='sum') / obs.size(0)
-
-            next_state_pred = state + model.transition_model(state, action)
-            next_rec = torch.sigmoid(decoder(next_state_pred))
             next_loss = F.mse_loss(
                 next_rec, next_obs,
                 reduction='sum') / obs.size(0)
@@ -197,12 +164,13 @@ for epoch in range(1, args.epochs + 1):
         else:
             loss = model.contrastive_loss(*data_batch)
 
+        avg_mse_latent += F.mse_loss(
+            state.squeeze(1), next_state_pred.squeeze(1),
+            reduction='sum').item() / obs.size(0)
+        
         loss.backward()
         train_loss += loss.item()
         optimizer.step()
-
-        if args.decoder:
-            optimizer_dec.step()
 
         if batch_idx % args.log_interval == 0:
             print(
@@ -215,10 +183,11 @@ for epoch in range(1, args.epochs + 1):
         step += 1
 
     avg_loss = train_loss / len(train_loader.dataset)
+    avg_mse_latent /= len(train_loader.dataset)
     # writer.add_scalar("Loss/train", avg_loss, epoch)
-    wandb.log({"avg_loss": loss})
-    print('====> Epoch: {} Average loss: {:.6f}'.format(
-        epoch, avg_loss))
+    # wandb.log({"avg_loss": loss})
+    print('====> Epoch: {} MSE_Recon: {:.6f} MSE_Latent: {:.6f}'.format(
+        epoch, avg_loss, avg_mse_latent))
 
     if avg_loss < best_loss:
         best_loss = avg_loss

@@ -9,3 +9,10 @@ python data_gen/physics.py --num-episodes 5000 --history_length 11 --total_seque
 ```
 python data_gen/env.py --env_id ShapesTrain-v0 --fname data/shapes_train.h5 --num_episodes 10 --seed 1 --history_length 1
 ```
+
+
+### Train 2D shapes
+
+```
+python train_with_new_encoder.py --dataset data/shapes_train.h5 --name shapes
+```
