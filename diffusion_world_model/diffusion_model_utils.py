@@ -1,25 +1,11 @@
 # Author: Vibhakar Mohta vmohta@cs.cmu.edu
-#!/usr/bin/env python3
+# Adapted from https://diffusion-policy.cs.columbia.edu/
 
 import torch
 import torch.nn as nn
 import torchvision
 import math
 from typing import Union, Callable
-
-#@markdown ### **Network**
-#@markdown
-#@markdown Defines a 1D UNet architecture `ConditionalUnet1D`
-#@markdown as the noies prediction network
-#@markdown
-#@markdown Components
-#@markdown - `SinusoidalPosEmb` Positional encoding for the diffusion iteration k
-#@markdown - `Downsample1d` Strided convolution to reduce temporal resolution
-#@markdown - `Upsample1d` Transposed convolution to increase temporal resolution
-#@markdown - `Conv1dBlock` Conv1d --> GroupNorm --> Mish
-#@markdown - `ConditionalResidualBlock1D` Takes two inputs `x` and `cond`. \
-#@markdown `x` is passed through 2 `Conv1dBlock` stacked together with residual connection.
-#@markdown `cond` is applied to `x` with [FiLM](https://arxiv.org/abs/1709.07871) conditioning.
 
 class SinusoidalPosEmb(nn.Module):
     def __init__(self, dim):
@@ -34,7 +20,6 @@ class SinusoidalPosEmb(nn.Module):
         emb = x[:, None] * emb[None, :]
         emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
         return emb
-
 
 class Downsample1d(nn.Module):
     def __init__(self, dim):
@@ -243,8 +228,8 @@ class ConditionalUnet1D(nn.Module):
         if global_cond is not None:
             global_feature = torch.cat([
                 global_feature, global_cond
-            ], axis=-1)
-
+            ], axis=-1) # shape (B, cond_dim+diffusion_step_embed_dim)
+        
         x = sample
         h = []
         for idx, (resnet, resnet2, downsample) in enumerate(self.down_modules):
@@ -264,8 +249,9 @@ class ConditionalUnet1D(nn.Module):
 
         x = self.final_conv(x)
         
-        if expanded_shape:
-            x = x[...,0].unsqueeze(-1) # (B,T,C)
+        if expanded_shape: # x shape (B,C,4)
+            # take mean across the 4 latent dimensions
+            x = x.mean(dim=2).unsqueeze(-1) # (B,C,1)
 
         # (B,C,T)
         x = x.moveaxis(-1,-2)

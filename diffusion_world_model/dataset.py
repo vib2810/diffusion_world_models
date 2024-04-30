@@ -18,7 +18,7 @@ def load_list_dict_h5py(fname):
 class StateTransitionsDataset(data.Dataset):
     """Create dataset of (o_t, a_t, o_{t+1}) transitions from replay buffer."""
 
-    def __init__(self, hdf5_file):
+    def __init__(self, hdf5_file, mode="train"):
         """
         Args:
             hdf5_file (string): Path to the hdf5 file that contains experience
@@ -40,9 +40,12 @@ class StateTransitionsDataset(data.Dataset):
             step += num_steps
 
         self.num_steps = step
+        self.mode = mode
 
     def __len__(self):
-        return self.num_steps
+        if self.mode == "eval": # TODO: remove this line
+            return min(self.num_steps, 5000)
+        return self.num_steps 
 
     def __getitem__(self, idx):
         ep, step = self.idx2episode[idx]

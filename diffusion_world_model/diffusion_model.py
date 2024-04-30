@@ -141,7 +141,58 @@ class DiffusionTrainer(nn.Module):
              
             obs_latent = self.vae.get_encoding(obs).unsqueeze(1).detach() # (B, 1, latent_dim)
             n_obs_latent = self.get_normalized_latent(obs_latent)
-            noisy_latent = torch.randn_like(obs_latent).to(self.device) # (B, C, H, W)
+            noisy_latent = torch.randn_like(obs_latent).to(self.device) # (B, 1, latent_dim)
+            cond = self.get_conditioning(n_obs_latent, action)
+                
+            if sampler == "ddpm":
+                eval_sampler = self.noise_scheduler
+                eval_itrs = self.config["num_diffusion_iters"]
+            if sampler == "ddim":
+                eval_sampler = self.ddim_sampler
+                eval_itrs = self.config["num_ddim_iters"]
+            
+            # init scheduler
+            eval_sampler.set_timesteps(eval_itrs)
+
+            # initialize action from obs_latent
+            sample = noisy_latent
+            # sample
+            for k in eval_sampler.timesteps:
+
+                # predict noise
+                noise_pred = self.inference_nets['noise_pred_net'](
+                    sample=sample,
+                    timestep=k,
+                    global_cond=cond
+                )
+
+                # inverse diffusion step (remove noise)
+                sample = eval_sampler.step(
+                    model_output=noise_pred,
+                    timestep=k,
+                    sample=sample
+                ).prev_sample
+            
+            # get predicted next_obs_latent
+            return_val = sample
+            if self.config["pred_residual"] == True:
+                return_val = n_obs_latent + return_val
+            return_val = self.get_unnormalized_latent(return_val)
+            return return_val
+        
+    def get_next_latent(self, latent: torch.Tensor, action: torch.Tensor, sampler = "ddim"):
+        """
+        Sampler: either ddpm or ddim
+        Returns sample: (B, 1, latent_dim)
+        """
+        if sampler not in ["ddpm", "ddim"]:
+            print("Sampler must be either ddpm or ddim")
+            return None
+        
+        with torch.no_grad():
+            B = latent.shape[0]
+            n_obs_latent = self.get_normalized_latent(latent)
+            noisy_latent = torch.randn_like(n_obs_latent).to(self.device) # (B, 1, latent_dim)
             cond = self.get_conditioning(n_obs_latent, action)
                 
             if sampler == "ddpm":
@@ -159,7 +210,7 @@ class DiffusionTrainer(nn.Module):
             # sample
             for k in eval_sampler.timesteps:
                 # predict noise
-                noise_pred = self.nets['noise_pred_net'](# TODO: change to inference_nets
+                noise_pred = self.inference_nets['noise_pred_net'](
                     sample=sample,
                     timestep=k,
                     global_cond=cond
@@ -245,15 +296,13 @@ class DiffusionTrainer(nn.Module):
         """
         with torch.no_grad():
             next_obs_latent = self.vae.get_encoding(next_obs).unsqueeze(1) # (B, 1, latent_dim) GT next latent space
-            
             # Get model prediction
             model_pred = self.get_pred(obs, action, sampler)
-            
             # Compute the latent space loss
             latent_loss = F.mse_loss(model_pred, next_obs_latent)
             
             # Decode the predicted latent space
-            decoded_model_pred = self.vae.decoder(model_pred.squeeze(1)) # (B, C, H, W)
+            decoded_model_pred = self.vae.decoder(model_pred.squeeze(1)) # (B, C, H, W)        
             
             stacked = None
             if save:
@@ -267,7 +316,14 @@ class DiffusionTrainer(nn.Module):
                 "latent_loss": latent_loss.item(),
                 "recon_loss": recon_loss.item()
             }
-            return losses, stacked
+            return_dic = {
+                "losses": losses,
+                "stacked": stacked,
+                "model_pred": model_pred,
+                "decoded_model_pred": decoded_model_pred,
+                'next_obs_latent': next_obs_latent,
+            }
+            return return_dic
 
     def put_network_on_device(self):
         self.nets.to(self.device)

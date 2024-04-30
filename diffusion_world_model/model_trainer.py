@@ -28,12 +28,14 @@ class ModelTrainer:
         # Initialize the dataset
         root = f'{config["dataset_root"]}/{config["environment"]}'
         train_set = StateTransitionsDataset(f'{root}_train.h5')
-        val_set = StateTransitionsDataset(f'{root}_eval.h5')
-        self.train_dataloader = data.DataLoader(train_set, batch_size=config['batch_size'], shuffle=True, num_workers=4)
-        self.eval_dataloader = data.DataLoader(val_set, batch_size=config['batch_size'], shuffle=False, num_workers=4)
+        val_set = StateTransitionsDataset(f'{root}_eval.h5', mode="eval")
+        self.train_dataloader = data.DataLoader(train_set, batch_size=config['batch_size'], shuffle=True, num_workers=config['num_workers'])
+        self.eval_dataloader = data.DataLoader(val_set, batch_size=config['batch_size'], shuffle=False, num_workers=config['num_workers'])
         
         num_batches = len(self.train_dataloader)
         config["num_batches"] = num_batches
+        print("TRAIN BATCHES: ", num_batches)
+        print("VAL BATCHES: ", len(self.eval_dataloader))
 
         # Initialize model
         self.model = DiffusionTrainer(
@@ -88,7 +90,7 @@ class ModelTrainer:
                 action = action.to(self.device)
                 next_obs = next_obs.float().to(self.device)
                 
-                loss_cpu = self.model.train_model_step(obs, action, next_obs)
+                loss_cpu = self.model.train_model_step(obs, action, next_obs, self.global_step)
                 
                 # log to tensorboard
                 self.writer.add_scalar('Loss/train', loss_cpu, self.global_step)
@@ -130,7 +132,9 @@ class ModelTrainer:
                 
             B = obs.shape[0]
             save = True if idx == 1 else False
-            losses, stacked_i = self.model.eval_model(self.global_step, obs, action, next_obs, save=save)
+            output_dic = self.model.eval_model(self.global_step, obs, action, next_obs, save=save, sampler=self.config['eval_sampler'])
+            stacked_i = output_dic['stacked']
+            losses = output_dic['losses']
             if save:
                 stacked_samples = stacked_i
             # multiply by batch size

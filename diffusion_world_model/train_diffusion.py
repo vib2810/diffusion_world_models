@@ -27,10 +27,11 @@ if __name__ == "__main__":
         
         # Training params
         'lr': 1e-4,
-        'num_epochs': 1000,
-        'batch_size': 256,
-        'num_workers': 12,
+        'num_epochs': 800,
+        'batch_size': 512,
+        'num_workers': 8,
         'device': 'cuda' if torch.cuda.is_available() else 'cpu',
+        'eval_sampler': 'ddpm', # 'ddpm' or 'ddim'
         
         # Model params
         'history_length': 1, # Number of frames to stack as input to encoder
